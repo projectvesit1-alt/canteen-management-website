@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canteen Status</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+        body { background: #0f172a; color: white; font-family: sans-serif; padding: 15px; }
+        .card { background: #1e293b; border-radius: 20px; padding: 20px; text-align: center; margin-bottom: 20px; }
+        .number { font-size: 4rem; font-weight: bold; margin: 10px 0; }
+        .bar-bg { width: 100%; background: #334155; height: 12px; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+        #bar { height: 100%; width: 0%; transition: width 0.5s; }
+        #map { height: 200px; border-radius: 15px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="card" id="main-card">
+        <div id="live-label">● LIVE STATUS</div>
+        <div class="number" id="count">--</div>
+        <div class="bar-bg"><div id="bar"></div></div>
+        <div id="cap-text" style="color:#94a3b8">0% Occupied</div>
+        <p id="msg">Loading...</p>
+        <div id="map"></div>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+            <span style="color:#94a3b8; font-size:0.8rem;">TREND</span>
+            <select id="period" onchange="fetchData()" style="background:#334155; color:white; border:none; border-radius:5px;">
+                <option value="1">Last 1h</option>
+                <option value="3">Last 3h</option>
+            </select>
+        </div>
+        <div id="chart" style="height:180px;"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbw7QRaO4PRqrAS_ghBydcoz9rIeD0tKTZrJt81j6XOPxBgU_Tor-baT43bK4tFTxPS-qw/exec";
+        const map = L.map('map').setView([19.0454, 72.8888], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        const marker = L.circle([19.0454, 72.8888], {radius:15}).addTo(map);
+        google.charts.load('current', {'packages':['corechart']});
+
+        async function fetchData() {
+            const res = await fetch(API_URL);
+            const data = await res.json();
+            
+            if (data.status === "Closed") {
+                document.getElementById('count').innerText = "CLOSED";
+                document.getElementById('msg').innerText = "Canteen is currently shut.";
+                document.getElementById('bar').style.width = "0%";
+                return;
+            }
+
+            const perc = Math.min(Math.round((data.count/50)*100), 100);
+            const color = perc < 40 ? "#22c55e" : (perc < 80 ? "#eab308" : "#ef4444");
+            
+            document.getElementById('count').innerText = data.count;
+            document.getElementById('count').style.color = color;
+            document.getElementById('bar').style.width = perc + "%";
+            document.getElementById('bar').style.background = color;
+            document.getElementById('cap-text').innerText = perc + "% Occupied";
+            marker.setStyle({color:color, fillColor:color});
+
+            const hRes = await fetch(API_URL + "?action=history&period=" + document.getElementById('period').value);
+            const hData = await hRes.json();
+            if(hData.length > 1) drawChart(hData);
+        }
+
+        function drawChart(rows) {
+            const dt = new google.visualization.DataTable();
+            dt.addColumn('string', 'T'); dt.addColumn('number', 'P');
+            rows.forEach(r => dt.addRow([new Date(r[0]).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}), r[1]]));
+            new google.visualization.LineChart(document.getElementById('chart')).draw(dt, {
+                backgroundColor:'transparent', colors:['#3b82f6'], legend:'none',
+                chartArea:{width:'85%',height:'70%'}, hAxis:{textStyle:{color:'#94a3b8'}}, vAxis:{textStyle:{color:'#94a3b8'}}
+            });
+        }
+        setInterval(fetchData, 10000); google.charts.setOnLoadCallback(fetchData);
+    </script>
+</body>
+</html>

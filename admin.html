@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Canteen Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"></script>
+    <style>
+        body { background: #000; color: white; font-family: sans-serif; text-align: center; margin: 0; }
+        .controls { padding: 20px; background: #111; border-bottom: 2px solid #333; }
+        #toggleBtn { padding: 15px 30px; font-weight: bold; border-radius: 10px; border: none; cursor: pointer; background: #ef4444; color: white; }
+        video { width: 100%; max-height: 60vh; background: #222; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="toggleBtn" onclick="toggleStatus()">SWITCH TO CLOSED</button>
+        <div id="status" style="margin-top:10px; color: #aaa;">AI Initializing...</div>
+    </div>
+    <video id="webcam" autoplay playsinline></video>
+
+    <script type="module">
+        import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
+        const API_URL = "https://script.google.com/macros/s/AKfycbw7QRaO4PRqrAS_ghBydcoz9rIeD0tKTZrJt81j6XOPxBgU_Tor-baT43bK4tFTxPS-qw/exec";
+        let detector; let isCanteenOpen = true;
+
+        window.toggleStatus = async function() {
+            isCanteenOpen = !isCanteenOpen;
+            const status = isCanteenOpen ? "Open" : "Closed";
+            document.getElementById("toggleBtn").innerText = "SWITCH TO " + (isCanteenOpen ? "CLOSED" : "OPEN");
+            document.getElementById("toggleBtn").style.background = isCanteenOpen ? "#ef4444" : "#22c55e";
+            fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "toggle", status: status }) });
+        };
+
+        async function initAI() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
+            detector = await ObjectDetector.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite" },
+                scoreThreshold: 0.5, runningMode: "VIDEO"
+            });
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => {
+                document.getElementById("webcam").srcObject = s;
+                document.getElementById("status").innerText = "SCANNER ACTIVE";
+                predict();
+            });
+        }
+        async function predict() {
+            if (isCanteenOpen) {
+                const results = await detector.detectForVideo(document.getElementById("webcam"), performance.now());
+                const people = results.detections.filter(d => d.categories[0].categoryName === 'person').length;
+                fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ count: people }) });
+            }
+            setTimeout(() => { window.requestAnimationFrame(predict); }, 4000);
+        }
+        initAI();
+    </script>
+</body>
+</html>
