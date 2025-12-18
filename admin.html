@@ -1,31 +1,55 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Canteen Admin Scanner</title>
+    <title>Admin - Canteen Crowd Control</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"></script>
     <style>
-        body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; }
-        .header { padding: 20px; background: #111; border-bottom: 2px solid #334155; }
-        .controls { display: flex; justify-content: space-around; align-items: center; padding: 15px; }
-        #toggleBtn { padding: 12px 24px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; transition: 0.3s; }
-        video { width: 100%; max-height: 65vh; background: #222; transform: scaleX(1); }
-        .stat-box { padding: 15px; background: #1e293b; margin: 10px; border-radius: 12px; }
-        #count { font-size: 3rem; font-weight: bold; color: #3b82f6; }
+        body { background: #000; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; margin: 0; overflow-x: hidden; }
+        
+        /* New Header Styling */
+        .main-header { 
+            background: #1e293b; 
+            padding: 20px 10px; 
+            border-bottom: 3px solid #3b82f6;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .main-header h1 { 
+            margin: 0; 
+            font-size: 1.2rem; 
+            letter-spacing: 2px; 
+            color: #f8fafc;
+            text-transform: uppercase;
+        }
+        .sub-title { font-size: 0.7rem; color: #94a3b8; margin-top: 5px; }
+
+        .controls { display: flex; justify-content: space-around; align-items: center; padding: 20px; background: #111827; }
+        #toggleBtn { padding: 14px 28px; font-weight: bold; border-radius: 12px; border: none; cursor: pointer; transition: all 0.3s ease; font-size: 0.9rem; }
+        
+        video { width: 100%; max-height: 60vh; background: #000; object-fit: cover; }
+        
+        .stat-card { background: #1e293b; padding: 15px; border-radius: 15px; min-width: 120px; border: 1px solid #334155; }
+        #count { font-size: 2.5rem; font-weight: 800; color: #3b82f6; display: block; }
+        .ai-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; background: #334155; font-size: 0.6rem; color: #38bdf8; margin-top: 10px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="controls">
-            <div>
-                <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 5px;">SYSTEM STATUS</div>
-                <button id="toggleBtn" onclick="toggleStatus()">LOADING...</button>
-            </div>
-            <div class="stat-box">
-                <div style="font-size: 0.7rem; color: #94a3b8;">PEOPLE DETECTED</div>
-                <div id="count">0</div>
-            </div>
+
+    <div class="main-header">
+        <h1>Canteen Crowd Control Center</h1>
+        <div class="sub-title">AI-Powered Occupancy Management System</div>
+    </div>
+
+    <div class="controls">
+        <div>
+            <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 8px;">SYSTEM GATE</div>
+            <button id="toggleBtn" onclick="toggleStatus()">SYNCING...</button>
         </div>
-        <div id="ai-status" style="font-size: 0.8rem; color: #64748b;">Initializing AI Models...</div>
+        
+        <div class="stat-card">
+            <div style="font-size: 0.6rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">Live Count</div>
+            <span id="count">0</span>
+            <div id="ai-status" class="ai-badge">AI Initializing...</div>
+        </div>
     </div>
 
     <video id="webcam" autoplay playsinline></video>
@@ -33,30 +57,27 @@
     <script type="module">
         import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
 
-        // REPLACE WITH YOUR LATEST WEB APP URL
-        const API_URL = "https://script.google.com/macros/s/AKfycbw7QRaO4PRqrAS_ghBydcoz9rIeD0tKTZrJt81j6XOPxBgU_Tor-baT43bK4tFTxPS-qw/exec";
+        // URL from your Google Apps Script Deployment
+        const API_URL = "https://script.google.com/macros/s/AKfycbx67MgqvV95MylS_0wdSqRdC0Im3PbrRWzRmK5w9heTmqnolvIsVWrG5CKjBeQaXVIf/exec";
         
         let detector;
         let isCanteenOpen = true;
         const video = document.getElementById("webcam");
 
-        // 1. Initialize Toggle State from Sheet
         async function checkInitialStatus() {
             try {
                 const res = await fetch(API_URL);
                 const data = await res.json();
                 isCanteenOpen = (data.status === "Open");
                 updateToggleButton();
-            } catch (e) { console.error("Initial status check failed"); }
+            } catch (e) { console.error("Sync Error"); }
         }
 
-        // 2. Manual Toggle Function
         window.toggleStatus = async function() {
             isCanteenOpen = !isCanteenOpen;
             const newStatus = isCanteenOpen ? "Open" : "Closed";
             updateToggleButton();
 
-            // Send toggle to Google Sheets
             fetch(API_URL, {
                 method: "POST",
                 mode: "no-cors",
@@ -66,27 +87,26 @@
 
         function updateToggleButton() {
             const btn = document.getElementById("toggleBtn");
-            btn.innerText = isCanteenOpen ? "OPEN (TAP TO CLOSE)" : "CLOSED (TAP TO OPEN)";
+            btn.innerText = isCanteenOpen ? "OPEN / ACTIVE" : "CLOSED / IDLE";
             btn.style.background = isCanteenOpen ? "#ef4444" : "#22c55e";
             btn.style.color = "white";
         }
 
-        // 3. AI Initialization
         async function initAI() {
             try {
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
                 detector = await ObjectDetector.createFromOptions(vision, {
                     baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite" },
-                    scoreThreshold: 0.5,
+                    scoreThreshold: 0.45,
                     runningMode: "VIDEO"
                 });
                 
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
-                document.getElementById("ai-status").innerText = "AI SCANNER ACTIVE";
+                document.getElementById("ai-status").innerText = "AI SCANNER ONLINE";
                 video.addEventListener("loadeddata", predict);
             } catch (err) {
-                document.getElementById("ai-status").innerText = "Camera Access Error";
+                document.getElementById("ai-status").innerText = "CAMERA ERROR";
             }
         }
 
@@ -96,7 +116,6 @@
                 const people = results.detections.filter(d => d.categories[0].categoryName === 'person').length;
                 document.getElementById("count").innerText = people;
 
-                // Send count to Sheets
                 fetch(API_URL, {
                     method: "POST",
                     mode: "no-cors",
@@ -105,8 +124,6 @@
             } else {
                 document.getElementById("count").innerText = "--";
             }
-            
-            // Sync interval
             setTimeout(() => { window.requestAnimationFrame(predict); }, 4000);
         }
 
