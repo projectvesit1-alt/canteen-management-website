@@ -1,55 +1,116 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Canteen Admin</title>
+    <title>Canteen Admin Scanner</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"></script>
     <style>
-        body { background: #000; color: white; font-family: sans-serif; text-align: center; margin: 0; }
-        .controls { padding: 20px; background: #111; border-bottom: 2px solid #333; }
-        #toggleBtn { padding: 15px 30px; font-weight: bold; border-radius: 10px; border: none; cursor: pointer; background: #ef4444; color: white; }
-        video { width: 100%; max-height: 60vh; background: #222; }
+        body { background: #000; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; }
+        .header { padding: 20px; background: #111; border-bottom: 2px solid #334155; }
+        .controls { display: flex; justify-content: space-around; align-items: center; padding: 15px; }
+        #toggleBtn { padding: 12px 24px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; transition: 0.3s; }
+        video { width: 100%; max-height: 65vh; background: #222; transform: scaleX(1); }
+        .stat-box { padding: 15px; background: #1e293b; margin: 10px; border-radius: 12px; }
+        #count { font-size: 3rem; font-weight: bold; color: #3b82f6; }
     </style>
 </head>
 <body>
-    <div class="controls">
-        <button id="toggleBtn" onclick="toggleStatus()">SWITCH TO CLOSED</button>
-        <div id="status" style="margin-top:10px; color: #aaa;">AI Initializing...</div>
+    <div class="header">
+        <div class="controls">
+            <div>
+                <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 5px;">SYSTEM STATUS</div>
+                <button id="toggleBtn" onclick="toggleStatus()">LOADING...</button>
+            </div>
+            <div class="stat-box">
+                <div style="font-size: 0.7rem; color: #94a3b8;">PEOPLE DETECTED</div>
+                <div id="count">0</div>
+            </div>
+        </div>
+        <div id="ai-status" style="font-size: 0.8rem; color: #64748b;">Initializing AI Models...</div>
     </div>
+
     <video id="webcam" autoplay playsinline></video>
 
     <script type="module">
         import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
-        const API_URL = "https://script.google.com/macros/s/AKfycbw7QRaO4PRqrAS_ghBydcoz9rIeD0tKTZrJt81j6XOPxBgU_Tor-baT43bK4tFTxPS-qw/exec";
-        let detector; let isCanteenOpen = true;
 
+        // REPLACE WITH YOUR LATEST WEB APP URL
+        const API_URL = "https://script.google.com/macros/s/AKfycbw7QRaO4PRqrAS_ghBydcoz9rIeD0tKTZrJt81j6XOPxBgU_Tor-baT43bK4tFTxPS-qw/exec";
+        
+        let detector;
+        let isCanteenOpen = true;
+        const video = document.getElementById("webcam");
+
+        // 1. Initialize Toggle State from Sheet
+        async function checkInitialStatus() {
+            try {
+                const res = await fetch(API_URL);
+                const data = await res.json();
+                isCanteenOpen = (data.status === "Open");
+                updateToggleButton();
+            } catch (e) { console.error("Initial status check failed"); }
+        }
+
+        // 2. Manual Toggle Function
         window.toggleStatus = async function() {
             isCanteenOpen = !isCanteenOpen;
-            const status = isCanteenOpen ? "Open" : "Closed";
-            document.getElementById("toggleBtn").innerText = "SWITCH TO " + (isCanteenOpen ? "CLOSED" : "OPEN");
-            document.getElementById("toggleBtn").style.background = isCanteenOpen ? "#ef4444" : "#22c55e";
-            fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "toggle", status: status }) });
+            const newStatus = isCanteenOpen ? "Open" : "Closed";
+            updateToggleButton();
+
+            // Send toggle to Google Sheets
+            fetch(API_URL, {
+                method: "POST",
+                mode: "no-cors",
+                body: JSON.stringify({ action: "toggle", status: newStatus })
+            });
         };
 
-        async function initAI() {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
-            detector = await ObjectDetector.createFromOptions(vision, {
-                baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite" },
-                scoreThreshold: 0.5, runningMode: "VIDEO"
-            });
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } }).then(s => {
-                document.getElementById("webcam").srcObject = s;
-                document.getElementById("status").innerText = "SCANNER ACTIVE";
-                predict();
-            });
+        function updateToggleButton() {
+            const btn = document.getElementById("toggleBtn");
+            btn.innerText = isCanteenOpen ? "OPEN (TAP TO CLOSE)" : "CLOSED (TAP TO OPEN)";
+            btn.style.background = isCanteenOpen ? "#ef4444" : "#22c55e";
+            btn.style.color = "white";
         }
+
+        // 3. AI Initialization
+        async function initAI() {
+            try {
+                const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
+                detector = await ObjectDetector.createFromOptions(vision, {
+                    baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite" },
+                    scoreThreshold: 0.5,
+                    runningMode: "VIDEO"
+                });
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                video.srcObject = stream;
+                document.getElementById("ai-status").innerText = "AI SCANNER ACTIVE";
+                video.addEventListener("loadeddata", predict);
+            } catch (err) {
+                document.getElementById("ai-status").innerText = "Camera Access Error";
+            }
+        }
+
         async function predict() {
             if (isCanteenOpen) {
-                const results = await detector.detectForVideo(document.getElementById("webcam"), performance.now());
+                const results = await detector.detectForVideo(video, performance.now());
                 const people = results.detections.filter(d => d.categories[0].categoryName === 'person').length;
-                fetch(API_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ count: people }) });
+                document.getElementById("count").innerText = people;
+
+                // Send count to Sheets
+                fetch(API_URL, {
+                    method: "POST",
+                    mode: "no-cors",
+                    body: JSON.stringify({ count: people })
+                });
+            } else {
+                document.getElementById("count").innerText = "--";
             }
+            
+            // Sync interval
             setTimeout(() => { window.requestAnimationFrame(predict); }, 4000);
         }
+
+        checkInitialStatus();
         initAI();
     </script>
 </body>
